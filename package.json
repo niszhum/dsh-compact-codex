@@ -1,0 +1,30 @@
+{
+  "name": "dsh-compact-codex",
+  "version": "1.0.0",
+  "description": "Codex 风格压缩后端：以可拆卸插件形式替换 dsh 的 ctx.compaction 服务，全局覆盖全部 agent preset。",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./preset": "./lib/preset.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "scripts": {
+    "sync": "node ./sync-presets.mjs"
+  },
+  "license": "MIT"
+}

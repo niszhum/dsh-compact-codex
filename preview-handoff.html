@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>dsh-compact-codex · 压缩交接卡片预览</title>
+<style>
+  /* dsh 主题 token 的近似取值，仅供本页预览；真实界面由宿主提供。 */
+  :root {
+    --dsw-alias-bg-base: #1f1f1f;
+    --dsw-alias-state-business-primary: #4d7cfe;
+    --dsw-alias-label-primary: #ececec;
+    --dsw-alias-label-secondary: #a8a8a8;
+    --dsw-alias-label-tertiary: #7a7a7a;
+    --dsw-alias-border-l1: #333;
+    --dsw-radius-sm: 6px;
+    --dsh-content-font-size-secondary: 13px;
+    --dsh-content-font-delta-secondary: 0px;
+  }
+  body {
+    margin: 0; padding: 28px 24px 60px; background: #141414; color: #ececec;
+    font: 14px/22px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .note { max-width: 748px; margin: 0 auto 18px; color: #8a8a8a; font-size: 12px; line-height: 18px; }
+  .note b { color: #c8c8c8; font-weight: 600; }
+  .chat { max-width: 748px; margin: 0 auto; display: flex; flex-direction: column; gap: 6px; }
+  .divider { margin: 20px 0 6px; color: #6a6a6a; font-size: 12px; letter-spacing: .04em; }
+  .msg { background: #262626; border-radius: 12px; padding: 10px 16px; white-space: pre-wrap; }
+
+  /* ↓↓↓ 逐字复制自 lib/client.js 注入的 CSS ↓↓↓ */
+  .ccc_row{border-left:2px solid var(--dsw-alias-state-business-primary);
+    background:color-mix(in srgb,var(--dsw-alias-bg-base) 88%,var(--dsw-alias-state-business-primary) 12%);
+    border-radius:var(--dsw-radius-sm);padding:6px 10px;margin:2px 0}
+  .ccc_head{align-items:center;gap:6px;cursor:pointer;user-select:none;list-style:none;
+    font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(22px + var(--dsh-content-font-delta-secondary,0px));
+    color:var(--dsw-alias-label-tertiary);display:flex}
+  .ccc_head::-webkit-details-marker{display:none}
+  .ccc_head:hover{color:var(--dsw-alias-label-secondary)}
+  .ccc_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-business-primary)}
+  .ccc_label{font-weight:600;color:var(--dsw-alias-label-primary);flex:none}
+  .ccc_meta{color:inherit;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:auto}
+  .ccc_body{margin:6px 0 0;padding:8px 0 0;border-top:1px solid var(--dsw-alias-border-l1);
+    color:var(--dsw-alias-label-secondary);word-break:break-word;
+    font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
+  .ccc_h1{font-weight:600;color:var(--dsw-alias-label-primary);font-size:calc(var(--dsh-content-font-size-secondary,13px) + 2px);margin:0 0 4px}
+  .ccc_h2{font-weight:600;color:var(--dsw-alias-label-primary);margin:10px 0 2px}
+  .ccc_p{margin:0}
+  .ccc_gap{height:6px}
+  .ccc_quote{border-left:2px solid color-mix(in srgb,var(--dsw-alias-label-tertiary) 55%,transparent);padding-left:8px;color:var(--dsw-alias-label-tertiary);margin:1px 0}
+  .ccc_li{padding-left:14px;text-indent:-14px;margin:0}
+  .ccc_code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);
+    color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-bg-base) 80%,#000 20%);border-radius:3px;padding:0 3px}
+  .ccc_hr{border:0;border-top:1px solid var(--dsw-alias-border-l1);margin:8px 0}
+  /* ↑↑↑ 复制结束 ↑↑↑ */
+</style>
+</head>
+<body>
+  <div class="note">
+    <b>dsh-compact-codex 的压缩交接消息。</b>
+    上：折叠态（列表里看到的那一行，与下面对照可见它不是普通消息）。中：展开态。下：普通助手回复。
+  </div>
+
+  <div class="chat">
+    <div class="divider">— 折叠态 —</div>
+    <details class="ccc_row">
+      <summary class="ccc_head">
+        <span class="ccc_dot" aria-hidden="true"></span>
+        <span class="ccc_label">上下文交接</span>
+        <span class="ccc_meta">- `#16634` 只是本机测试过，还没有给他人测试，写已开发完成并测试通过完全错误，短信都没上还完成</span>
+      </summary>
+      <div class="ccc_body"></div>
+    </details>
+
+    <div class="divider">— 展开态 —</div>
+    <details class="ccc_row" open>
+      <summary class="ccc_head">
+        <span class="ccc_dot" aria-hidden="true"></span>
+        <span class="ccc_label">上下文交接</span>
+        <span class="ccc_meta">- `#16634` 只是本机测试过，还没有给他人测试，写已开发完成并测试通过完全错误，短信都没上还完成</span>
+      </summary>
+      <div class="ccc_body">
+        <div class="ccc_h1">上下文交接</div>
+        <div class="ccc_gap"></div>
+        <div class="ccc_quote">这是<strong>由代码从会话记录里拼出的</strong>交接信息，不是模型写的摘要。上一个窗口的对话正文已不在上下文里。</div>
+        <div class="ccc_quote">条目上的 <code class="ccc_code">#编号</code> 是会话事件编号，需要某个工具输出的原文时可以据此回查——会话记录保留完整历史，包括被压缩遮蔽的部分。</div>
+        <div class="ccc_quote">不要重做「最近的动作」里已经成功完成的事；需要重跑某条命令前，先确认它没有被列在这里。</div>
+        <div class="ccc_gap"></div>
+        <div class="ccc_h2">最近的用户请求（原话）</div>
+        <div class="ccc_li">· <code class="ccc_code">#16634</code> 只是本机测试过，还没有给他人测试，写已开发完成并测试通过完全错误，短信都没上还完成</div>
+        <div class="ccc_li">· <code class="ccc_code">#16684</code> 测试</div>
+        <div class="ccc_gap"></div>
+        <div class="ccc_h2">上一次助手的最后回复（<code class="ccc_code">#16676</code>）</div>
+        <div class="ccc_p">改了两处口径，都是我说重了：「开发完成」改成「主体功能已开发完毕」，「测试通过」改成「在本机完成功能自测」。</div>
+        <div class="ccc_gap"></div>
+        <div class="ccc_h2">文件工作集（最近被改动的）</div>
+        <div class="ccc_li">· <code class="ccc_code">D:\project\report\build-report.py</code>（<code class="ccc_code">#16657</code>）</div>
+        <div class="ccc_li">· <code class="ccc_code">D:\project\report\verify-format.py</code>（<code class="ccc_code">#16647</code>）</div>
+        <div class="ccc_gap"></div>
+        <div class="ccc_h2">最近的动作（旧→新）</div>
+        <div class="ccc_li">· <code class="ccc_code">#16600</code> <strong>edit</strong> D:\project\report\build-report.py：The file ... has been updated successfully.</div>
+        <div class="ccc_li">· <code class="ccc_code">#16610</code> <strong>pwsh</strong> Set-Location "D:\project"; python ./汇报/build-report.py：saved: report.docx | 段落数: 27 结构检查 verdict=pass</div>
+        <hr class="ccc_hr">
+        <div class="ccc_p">继续之前先确认一件事：上面「最近的用户请求」是用户的原话，如果你的记忆与它冲突，以它为准。</div>
+        <div class="ccc_p">然后接着用户最后的请求继续，不要重新开始一个已完成的任务。</div>
+      </div>
+    </details>
+
+    <div class="divider">— 普通助手回复（对照）—</div>
+    <div class="msg">改了两处口径，都是我说重了：把「开发完成」改成「主体功能已开发完毕」，把「测试通过」改成「在本机完成功能自测」。这样读者看到的就是实际状态，不会误判成可以上线了。</div>
+  </div>
+</body>
+</html>

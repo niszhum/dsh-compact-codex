@@ -12,7 +12,7 @@ Codex 风格的压缩后端。以可拆卸插件形式接管 dsh 的 `ctx.compac
 - **编号可回查**：交接信息里的 `#编号` 是会话事件的 `seq`，用 `history` 工具按编号读原文，包括被压缩遮蔽的部分——不需要另存历史副本。
 - **任务账本**：跨窗口保留意图与下一步。标 `done` 必须给出真实成功的工具结果编号，锚点必须能在文件里唯一定位，两条规则由代码把关。
 - **换窗前自动快照**：压力换窗与冷缓存换窗发生时模型往往来不及记账，插件会先由代码把未记账的工具结果归档成一条快照（`through` 盖到当前历史编号），账本时间线由此与交接信息对齐——新窗口不会拿过时的「进行中」记录重推已完成的步骤。
-- **预算读数**：按节流间隔注入 token 用量、压缩触发点与剩余量；越过压缩阈值那一刻起附上一句换窗指令，并解除节流直到压缩真正发生。读数追加在可复用前缀之后，不让 KV Cache 失效。
+- **压缩点提示**：平时不注入任何 token 数字——模型看到数字就会去算，那是纯分心。越过压缩点那一刻注入一条不含数字的指令：先 `ledger_append` 记账，再 `new_context` 换窗，不要先结束回合。带具体用量的读数是可选诊断（`budgetContext`），默认关闭。
 - **缓存观测与保活**：从 provider 报的读写缓存量判断前缀规模与冷热，并在读数里显示；空闲时按次数预算保活缓存，让下一次请求仍命中已有前缀。保活会发真实请求消耗额度，有前缀下限、空闲预算与连续失败即停三层收口。
 - **冷缓存换窗**：缓存已过期且上下文够大时主动换窗，此时整段重写前缀已不可避免。不调模型，默认开启。
 - **浏览器半侧渲染**：交接信息渲染成一张可折叠的卡片，而不是官方压缩行样式里的一行灰字。无构建步骤，手写即产物。
@@ -64,15 +64,19 @@ pnpm install
 
 装好之后不需要额外配置。缓存保活默认开启——它会在会话空闲时发真实请求以维持缓存命中，不需要就设 `keepalive: false`。
 
-重启 dsh 后，对话里会按节流间隔出现预算读数：
+重启 dsh 后，对话里默认不会出现任何预算数字：整套压缩对模型是隐形的，直到越过压缩点那一刻。
+
+越过压缩点时模型会收到一条不含数字的提示：
 
 ```markdown
-Context budget as of this step: about 73571 of 676000 tokens used (10.9%).
-Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain before that point.
-缓存：活着（前缀约 72k，还剩约 300 秒）
+Context compaction is available now: this window has reached its compaction point.
+Do two things in the current turn, in this order.
+First call ledger_append: the task id, what is done, and the single next step.
+Then call new_context to reset the window — its ledger gate opens once this window has an entry for the current request.
+Do not end the turn first: an idle window at the compaction point has no step left to act on it.
 ```
 
-上下文接近上限时，整段历史会被换成一条交接信息，在界面上渲染成一张卡片。缓存行只在拿到 provider 的缓存用量后出现，第一次请求时没有。
+收到之后模型先记账、再换窗，整段历史被换成一条交接信息，在界面上渲染成一张卡片。要看具体用量时把 `budgetContext` 打开，读数才会按 `budgetRefreshMs` 的间隔注入（含缓存冷热那一行）。
 
 ## 工具
 
@@ -98,7 +102,7 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
     handoffTokens: 20000      # 交接信息的规模上限（估算 token）
     thresholdRatio: 0.5
     retainTokens: 32768
-    budgetContext: true       # 注入 token 预算读数
+    budgetContext: false      # 诊断读数，默认关闭（发数字会让模型去算）
     budgetRefreshMs: 600000   # 读数节流间隔，0 为每步都发
 ```
 
@@ -108,8 +112,8 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
 | --- | --- | --- |
 | `style` | `"reset"` | 只接受 `"reset"`（换窗、不调模型）。配其他值会在载入期报错，提示卸载本插件 |
 | `handoffTokens` | `15000` | `reset` 模式交接信息的规模上限（估算 token） |
-| `budgetContext` | `true` | 是否注入预算读数 |
-| `budgetRefreshMs` | `600000` | 两次读数之间的最小间隔；`0` 为每步都注入 |
+| `budgetContext` | `false` | 是否注入带具体用量的诊断读数。默认关闭；压缩点提示不受这个开关影响 |
+| `budgetRefreshMs` | `600000` | 诊断读数之间的最小间隔（仅 `budgetContext` 打开时生效）；`0` 为每步都注入 |
 | `keepalive` | `true` | 是否在空闲时保活缓存。**会发真实请求消耗额度**，不需要时关掉 |
 | `cacheTtlMs` | `3600000` | 缓存 TTL 的假设值。provider 侧的真实值不下发，所以可配 |
 | `keepaliveAfterMs` | `3120000` | 空闲多久开始保活 |

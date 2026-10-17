@@ -85,7 +85,7 @@ Do not end the turn first: an idle window at the compaction point has no step le
 | 工具 | 说明 |
 | --- | --- |
 | `new_context` | 模型主动请求换窗。调用只登记请求，在下一个步边界消费并执行换窗；环境状态不受影响 |
-| `ledger_append` | 向任务账本追加一条记录。`task_id` 标识任务，`status` 取 `in_progress` / `done` / `superseded` / `blocked`，未完成时写 `next_step` 与 `anchors` |
+| `ledger_append` | 向任务账本追加一条记录。这是模型自己的义务、不是等提醒——完成一个阶段就记一条。`task_id` 标识任务，`status` 取 `in_progress` / `done` / `superseded` / `blocked`，未完成时写 `next_step` 与 `anchors` |
 | `ledger_read` | 读任务账本。`view` 取 `home`（概览）/ `current`（当前窗口）/ `search`（按词搜索） |
 | `history` | 检索或读取历史。`action` 为 `search`（按词、角色、工具名、路径、窗口过滤）或 `read`（按编号读原文，`field: "input"` 读那次调用的完整参数） |
 

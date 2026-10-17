@@ -72,7 +72,7 @@ Codex 把一套上下文管理挂在 `context_management.experimental_mode` 后�
 | Codex 的做法 | 本插件的重构 |
 | --- | --- |
 | 服务端注入 token 预算元数据 | 本地用 `ctx.tokenMeter.measure()` 与 `ctx.llm.resolveModelInfo()` 算出用量、触发阈值、剩余量，渲染成读数注入 |
-| `guidance_message` / `auto_compact_fallback_prompt`（history notes） | 不注入提醒：进度由账本承接，压力换窗前由代码落一条自动快照（见「任务账本」） |
+| `guidance_message` / `auto_compact_fallback_prompt`（history notes） | 只在越过阈值那一刻注入换窗指令，不提前催；进度另由账本与换窗前自动快照承接（见「任务账本」） |
 | `compact_token_budget.rs` 换窗 | `reset` 模式：不摘要，用代码拼出的交接信息替换整段历史 |
 | `new_context` 工具（模型主动换窗） | 注册同名工具；调用只登记请求，在 `agent/pre-step` 消费并调 `compactRegion()` |
 
@@ -86,7 +86,7 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
 缓存：活着（前缀约 72k，还剩约 300 秒）
 ```
 
-压缩由基类在步边界按阈值自动触发，不需要模型配合，因此读数里只有用量与触发点，没有「该动手了」这一类催促。阈值复算与基类公式对齐（`floor(min(W × ratio, W − 预留 − 余量))`），基类改公式时这里要同步。
+读数本身不带催促，越过阈值那一刻例外：这时追加一条指令——本回合内调 `new_context` 换窗，不要先结束回合（空闲的窗口停在阈值上就没有步边界再去触发压缩），并解除节流，每个步边界都发，直到压缩真的发生。之所以卡在阈值上而不是提前若干 token，是因为提前催会把模型的注意力拉到剩余量上反复计算、收尾停住。阈值复算与基类公式对齐（`floor(min(W × ratio, W − 预留 − 余量))`），基类改公式时这里要同步。
 
 节流用进程内 `WeakMap` 而不是 `sessionProjections`：插件生命周期与会话同进程，投影会引入额外服务依赖。进程重启后最多多发一条读数，代价可接受。
 

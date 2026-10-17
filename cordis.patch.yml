@@ -18,7 +18,7 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          suffix: Your working directory is {{cwd}}.
+          suffix: ""
           prefix: ""
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
@@ -165,7 +165,7 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          suffix: Your working directory is {{cwd}}.
+          suffix: ""
           prefix: ""
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
@@ -383,7 +383,7 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          suffix: Your working directory is {{cwd}}.
+          suffix: ""
           prefix: ""
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'

@@ -100,8 +100,6 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
     retainTokens: 32768
     budgetContext: true       # 注入 token 预算读数
     budgetRefreshMs: 600000   # 读数节流间隔，0 为每步都发
-    noteReminder: true        # 临近压缩时提醒模型存档并继续
-    noteReminderTokens: 16000 # 离压缩点还剩多少 token 时开始提醒
 ```
 
 本插件自有字段：
@@ -112,8 +110,6 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
 | `handoffTokens` | `15000` | `reset` 模式交接信息的规模上限（估算 token） |
 | `budgetContext` | `true` | 是否注入预算读数 |
 | `budgetRefreshMs` | `600000` | 两次读数之间的最小间隔；`0` 为每步都注入 |
-| `noteReminder` | `true` | 临近压缩时注入一条提醒，让模型把关键状态写进对话，然后继续当前任务 |
-| `noteReminderTokens` | `16000` | 提醒线，按离压缩点剩余的 token 计 |
 | `keepalive` | `true` | 是否在空闲时保活缓存。**会发真实请求消耗额度**，不需要时关掉 |
 | `cacheTtlMs` | `3600000` | 缓存 TTL 的假设值。provider 侧的真实值不下发，所以可配 |
 | `keepaliveAfterMs` | `3120000` | 空闲多久开始保活 |

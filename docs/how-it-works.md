@@ -72,13 +72,13 @@ Codex 把一套上下文管理挂在 `context_management.experimental_mode` 后�
 | Codex 的做法 | 本插件的重构 |
 | --- | --- |
 | 服务端注入 token 预算元数据 | 本地用 `ctx.tokenMeter.measure()` 与 `ctx.llm.resolveModelInfo()` 算出用量、触发阈值、剩余量，渲染成读数注入 |
-| `guidance_message` / `auto_compact_fallback_prompt`（history notes） | 剩余预算低于提醒线时，提醒模型把关键状态写进对话本身 |
+| `guidance_message` / `auto_compact_fallback_prompt`（history notes） | 不注入提醒：进度由账本承接，压力换窗前由代码落一条自动快照（见「任务账本」） |
 | `compact_token_budget.rs` 换窗 | `reset` 模式：不摘要，用代码拼出的交接信息替换整段历史 |
 | `new_context` 工具（模型主动换窗） | 注册同名工具；调用只登记请求，在 `agent/pre-step` 消费并调 `compactRegion()` |
 
 注入形态照官方 `dsh-time-context`：prepend 一个 `agent/pre-step` 监听器，先 `next()` 取下游决策，仅在决定进入步骤且未被取消时，往 `decision.messages` 末尾**追加**一条带来源的 user 消息。追加位置在可复用请求前缀之后，因此不会让 KV Cache 失效。
 
-读数长这样（未到提醒线时只有前两行，还没有缓存基线时没有第三行）：
+读数长这样（还没有缓存基线时没有第三行）：
 
 ```markdown
 Context budget as of this step: about 73571 of 676000 tokens used (10.9%).
@@ -86,7 +86,7 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
 缓存：活着（前缀约 72k，还剩约 300 秒）
 ```
 
-提醒线按**离压缩点还剩多少**算，不是离窗口上限还剩多少——后者永远差着一整个阈值，提醒会永不触发。阈值复算与基类公式对齐（`floor(min(W × ratio, W − 预留 − 余量))`），基类改公式时这里要同步。
+压缩由基类在步边界按阈值自动触发，不需要模型配合，因此读数里只有用量与触发点，没有「该动手了」这一类催促。阈值复算与基类公式对齐（`floor(min(W × ratio, W − 预留 − 余量))`），基类改公式时这里要同步。
 
 节流用进程内 `WeakMap` 而不是 `sessionProjections`：插件生命周期与会话同进程，投影会引入额外服务依赖。进程重启后最多多发一条读数，代价可接受。
 

@@ -71,14 +71,24 @@ Codex 把一套上下文管理挂在 `context_management.experimental_mode` 后�
 
 | Codex 的做法 | 本插件的重构 |
 | --- | --- |
-| 服务端注入 token 预算元数据 | 本地用 `ctx.tokenMeter.measure()` 与 `ctx.llm.resolveModelInfo()` 算出用量、触发阈值、剩余量，渲染成读数注入 |
+| 服务端注入 token 预算元数据 | 本地用 `ctx.tokenMeter.measure()` 与 `ctx.llm.resolveModelInfo()` 算出用量与触发阈值，但**默认不注入**：数字只进诊断读数（`budgetContext`，默认关），模型看到的只有压缩点到了这一件事 |
 | `guidance_message` / `auto_compact_fallback_prompt`（history notes） | 只在越过阈值那一刻注入换窗指令，不提前催；进度另由账本与换窗前自动快照承接（见「任务账本」） |
 | `compact_token_budget.rs` 换窗 | `reset` 模式：不摘要，用代码拼出的交接信息替换整段历史 |
 | `new_context` 工具（模型主动换窗） | 注册同名工具；调用只登记请求，在 `agent/pre-step` 消费并调 `compactRegion()` |
 
 注入形态照官方 `dsh-time-context`：prepend 一个 `agent/pre-step` 监听器，先 `next()` 取下游决策，仅在决定进入步骤且未被取消时，往 `decision.messages` 末尾**追加**一条带来源的 user 消息。追加位置在可复用请求前缀之后，因此不会让 KV Cache 失效。
 
-读数长这样（还没有缓存基线时没有第三行）：
+越过压缩点时注入的是这句（不含任何数字）：
+
+```markdown
+Context compaction is available now: this window has reached its compaction point.
+Do two things in the current turn, in this order.
+First call ledger_append: the task id, what is done, and the single next step.
+Then call new_context to reset the window — its ledger gate opens once this window has an entry for the current request.
+Do not end the turn first: an idle window at the compaction point has no step left to act on it.
+```
+
+要诊断时才打开 `budgetContext`，那时才会看到带具体用量的读数（还没有缓存基线时没有第三行）：
 
 ```markdown
 Context budget as of this step: about 73571 of 676000 tokens used (10.9%).
@@ -86,7 +96,7 @@ Automatic compaction triggers near 540800 tokens; roughly 467229 tokens remain b
 缓存：活着（前缀约 72k，还剩约 300 秒）
 ```
 
-读数本身不带催促，越过阈值那一刻例外：这时追加一条指令——本回合内先 `ledger_append` 记下状态，再调 `new_context` 换窗（两道账本门槛之一要求本窗口在最新用户请求之后记过账，先记账这一步才走得通），不要先结束回合（空闲的窗口停在阈值上就没有步边界再去触发压缩），并解除节流，每个步边界都发，直到压缩真的发生。之所以卡在阈值上而不是提前若干 token，是因为提前催会把模型的注意力拉到剩余量上反复计算、收尾停住。阈值复算与基类公式对齐（`floor(min(W × ratio, W − 预留 − 余量))`），基类改公式时这里要同步。
+注入给模型的只有压缩点这一件事，且只在越过那一刻起发：本回合内先 `ledger_append` 记下状态，再调 `new_context` 换窗（两道账本门槛之一要求本窗口在最新用户请求之后记过账，先记账这一步才走得通），不要先结束回合（空闲的窗口停在压缩点上就没有步边界再去触发压缩）。越过压缩点后不受节流限制，每个步边界都发，直到压缩真的发生。之所以卡在阈值上而不是提前若干 token，是因为提前催会把模型的注意力拉到剩余量上反复计算、收尾停住。阈值复算与基类公式对齐（`floor(min(W × ratio, W − 预留 − 余量))`），基类改公式时这里要同步。
 
 节流用进程内 `WeakMap` 而不是 `sessionProjections`：插件生命周期与会话同进程，投影会引入额外服务依赖。进程重启后最多多发一条读数，代价可接受。
 

@@ -29,10 +29,44 @@ Codex 风格的压缩后端。以可拆卸插件形式接管 dsh 的 `ctx.compac
 - Node.js ≥ 22.5.0（随 dsh 的要求）
 - 一份已安装并可运行的 dsh
 - pnpm（用于 profile 依赖安装）
+- git（安装脚本自动获取仓库时用；仓库已在本地则不必）
 
 ## 安装
 
-三步，每一步都可逆。
+一条命令，在 PowerShell 里跑：
+
+```powershell
+irm https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1 | iex
+```
+
+它按顺序做五件事：把仓库克隆到 `$DshHome\plugins\dsh-compact-codex`、把插件 import 的运行时包联接进该仓库的 `node_modules\@deepseek-ai\`、从官方 preset 生成 `cordis.patch.yml`、把本包写进 profile 的 `dependencies` 与 `dsh.profile.bundles`、最后 `pnpm install`。动过的文件先备份成 `*.bak-compact-codex-<时间戳>`，重复执行是幂等的。
+
+装完重启 dsh。
+
+本地已经克隆过仓库时，直接在仓库根目录跑 `.\install.ps1`，跳过克隆那一步。
+
+### 参数
+
+| 参数 | 默认 | 用途 |
+| --- | --- | --- |
+| `-Profile` | `desktop` | 挂到哪个 profile |
+| `-DshHome` | `$env:USERPROFILE\.dsh` | dsh 的 home 目录 |
+| `-InstallDir` | `$DshHome\plugins\dsh-compact-codex` | 自动获取时仓库落在哪 |
+| `-Repo` | 脚本所在目录 | 本地已有仓库时直接指定 |
+| `-DshApp` | 自动探测 | dsh 的 `resources\app\dsh` 目录 |
+| `-SkipPnpm` | 关 | 跳过 `pnpm install` |
+| `-DryRun` | 关 | 只打印将要执行的动作，不落盘 |
+
+`irm | iex` 传不了参数。要看试运行或指定 profile 时，先取回脚本文本再调用：
+
+```powershell
+$s = irm https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1
+& ([scriptblock]::Create($s)) -DryRun
+```
+
+### 手动安装
+
+不想跑脚本时，三步，每一步都可逆。
 
 **其一，把包链入 profile。** 在 `$DSH_HOME/profiles/<name>/package.json` 的 `dependencies` 加入（示例里的 `desktop` 是默认 profile 名）：
 
@@ -143,6 +177,7 @@ Do not end the turn first: an idle window at the compaction point has no step le
 
 | 脚本 | 用途 |
 | --- | --- |
+| `install.ps1` | 一条命令安装：获取仓库、联接运行时依赖、生成 `cordis.patch.yml`、挂进 profile、`pnpm install`。`-DryRun` 只看不改 |
 | `sync-presets.mjs` | 从官方 bundle 的 preset 生成 `cordis.patch.yml`，只替换压缩后端的模块名 |
 
 dsh 升级后重跑一次即可重新对齐：
@@ -168,6 +203,7 @@ node ./sync-presets.mjs
 │  └─ internals.md          preset 覆盖语义、依赖解析、实现对齐与已知边界
 ├─ cordis.patch.yml         生成物，由 sync-presets.mjs 覆盖
 ├─ preset-config.json       配置覆盖
+├─ install.ps1              一条命令安装
 ├─ sync-presets.mjs         生成 cordis.patch.yml
 ├─ preview-handoff.html     交接卡片的预览页（上图即由它截出，非运行期产物）
 ├─ preview-handoff.png

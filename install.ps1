@@ -93,8 +93,10 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = Join-Path $DshHom
 Step '准备仓库'
 
 if (-not (Test-Repo $Repo)) {
-    if (-not [string]::IsNullOrWhiteSpace($Repo)) {
-        Warn "指定的目录不像 dsh-compact-codex 的仓库：$Repo"
+    # 从 $PSScriptRoot 来的目录（脚本落盘处）本来就不是仓库，属正常情况，不提示；
+    # 只有显式传了 -Repo 却不对时才值得提醒。
+    if ($PSBoundParameters.ContainsKey('Repo') -and -not [string]::IsNullOrWhiteSpace($Repo)) {
+        Warn "指定的目录不像 dsh-compact-codex 的仓库：$Repo，改为自动获取"
     }
     $git = Get-Command git -ErrorAction SilentlyContinue
     if ($null -eq $git) {
@@ -143,6 +145,7 @@ if (-not (Test-Repo $Repo)) {
         Ok "已克隆：$InstallDir"
     }
     $Repo = $InstallDir
+    if (-not (Test-Repo $Repo)) { Fail "拿到的目录不像仓库：$Repo" }
 }
 
 Ok "仓库：$Repo"

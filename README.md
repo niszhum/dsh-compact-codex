@@ -36,7 +36,7 @@ Codex 风格的压缩后端。以可拆卸插件形式接管 dsh 的 `ctx.compac
 一条命令，在 PowerShell 里跑：
 
 ```powershell
-irm https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1 | iex
+iwr https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1 -UseBasicParsing -OutFile "$env:TEMP\install-compact-codex.ps1"; & "$env:TEMP\install-compact-codex.ps1"
 ```
 
 它按顺序做五件事：把仓库克隆到 `$DshHome\plugins\dsh-compact-codex`、把插件 import 的运行时包联接进该仓库的 `node_modules\@deepseek-ai\`、从官方 preset 生成 `cordis.patch.yml`、把本包写进 profile 的 `dependencies` 与 `dsh.profile.bundles`、最后 `pnpm install`。动过的文件先备份成 `*.bak-compact-codex-<时间戳>`，重复执行是幂等的。
@@ -44,6 +44,8 @@ irm https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1
 装完重启 dsh。
 
 本地已经克隆过仓库时，直接在仓库根目录跑 `.\install.ps1`，跳过克隆那一步。
+
+`irm … | iex` 走不通：`iex` 只把内容当命令表达式解析，脚本里的 `param` 块会被判成语法错误。所以先把脚本落盘、再执行落盘的那一份。
 
 ### 参数
 
@@ -57,11 +59,10 @@ irm https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1
 | `-SkipPnpm` | 关 | 跳过 `pnpm install` |
 | `-DryRun` | 关 | 只打印将要执行的动作，不落盘 |
 
-`irm | iex` 传不了参数。要看试运行或指定 profile 时，先取回脚本文本再调用：
+要传参数（试运行、换 profile）时，加在第二步后面：
 
 ```powershell
-$s = irm https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1
-& ([scriptblock]::Create($s)) -DryRun
+& "$env:TEMP\install-compact-codex.ps1" -DryRun
 ```
 
 ### 手动安装

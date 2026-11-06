@@ -204,6 +204,8 @@ node ./sync-presets.mjs
 ├─ docs/
 │  ├─ how-it-works.md       换窗机制、交接信息、预算读数、账本、历史、缓存
 │  └─ internals.md          preset 覆盖语义、依赖解析、实现对齐与已知边界
+├─ .agents/
+│  └─ notes/                决策记录：为什么这么做、否决过哪些替代方案
 ├─ cordis.patch.yml         生成物，由 sync-presets.mjs 覆盖
 ├─ preset-config.json       配置覆盖
 ├─ install.ps1              一条命令安装

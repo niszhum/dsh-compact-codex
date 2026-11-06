@@ -9,6 +9,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { __test } from '../lib/index.js'
 import { appendAutoSnapshot, renderHome, stampEntry, tasksOf, validateAppend } from '../lib/ledger.js'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 /** 造一个最小会话：surface 只含当前窗口的节点，日志保留全部事件。 */
 function sessionOf(events, surfaceFromSeq) {
@@ -141,6 +144,29 @@ test('done_when 省略时沿用上一条并标记为继承', () => {
 	assert.equal(task.doneWhen.isInherited, true)
 })
 
+// 守的是「不留残留临时文件、整本覆盖」；rename 的原子性靠语义与代码审查，测试测不出来。
+test('账本落盘是原子替换：不留临时文件，第二次写入整本覆盖', () => {
+	const home = mkdtempSync(join(tmpdir(), 'dsh-ledger-'))
+	const previous = process.env.DSH_HOME
+	process.env.DSH_HOME = home
+	try {
+		const session = { id: 'session-atomic' }
+		const first = [{ task_id: 't', title: 'T', status: 'in_progress', text: '第一版', seq: 1, ts: 1, window: 1, request_ref: 0 }]
+		const second = [...first, { task_id: 't', title: 'T', status: 'done', text: '第二版', seq: 2, ts: 2, window: 1, request_ref: 0, evidence: [1] }]
+		assert.equal(__test.writeLedger(session, first), true)
+		assert.equal(__test.writeLedger(session, second), true)
+		const dir = join(home, 'dsh-compact-codex', 'sessions', 'session-atomic')
+		assert.deepEqual(readdirSync(dir), ['ledger.jsonl'], '只应有账本本体')
+		const lines = readFileSync(join(dir, 'ledger.jsonl'), 'utf8').trim().split('\n')
+		assert.equal(lines.length, 2, '第二次写入是整本覆盖，不是追加')
+		assert.ok(lines[1].includes('第二版'))
+	} finally {
+		if (previous === undefined) delete process.env.DSH_HOME
+		else process.env.DSH_HOME = previous
+		rmSync(home, { recursive: true, force: true })
+	}
+})
+
 test('账本多行记录渲染时续行缩进，不顶平任务层级', () => {
 	const entry = stampEntry(
 		{ task_id: 't1', title: 'T', status: 'in_progress', text: '首行要点\n已由系统归档：\n- 动作一', next_step: '接着做' },
@@ -160,4 +186,15 @@ test('脚本里的 stdout.write 与夹具路径不算写文件', () => {
 	assert.deepEqual(__test.filePathsOf('process.stdout.write(x)\nconst fixture = {"file_path":"src/fetch.js"}'), [])
 	assert.deepEqual(__test.filePathsOf('await tools.write({ file_path: "src/b.js", content: "y" })'), ['src/b.js'])
 	assert.deepEqual(__test.filePathsOf('*** Update File: lib/a.js'), ['lib/a.js'], 'apply_patch 的路径写在补丁正文里')
+})
+
+test('交接信息先给最新请求与上一轮回复，起点压在它们之后', () => {
+	const { session } = buildSession()
+	const handoff = __test.assembleHandoff(session, options)
+	const at = (marker) => handoff.indexOf(marker)
+	assert.ok(at('## 最新请求（原话）') >= 0, '最新请求单独成段')
+	assert.ok(at('## 最新请求（原话）') < at('## 上一次助手的最后回复'), '最新请求排在回复之前')
+	assert.ok(at('## 上一次助手的最后回复') < at('## 任务起点'), '起点不能比它们先')
+	assert.ok(at('## 任务起点') < at('继续之前先确认三件事'), '收尾指令仍在最末')
+	assert.equal(handoff.split('接着做').length - 1, 1, '最新请求不重复占轨迹')
 })

@@ -1,0 +1,110 @@
+/**
+ * 交接信息与账本的离线断言：不依赖真实会话日志，也不启动 dsh。
+ *
+ * 跑法：在仓库根目录 `node --test test/`。需要 node_modules 里的运行时包
+ * （install.ps1 建的目录联接），否则 lib/index.js 的 import 解析不到。
+ */
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { __test } from '../lib/index.js'
+import { renderHome, stampEntry, tasksOf, validateAppend } from '../lib/ledger.js'
+
+/** 造一个最小会话：surface 只含当前窗口的节点，日志保留全部事件。 */
+function sessionOf(events, surfaceFromSeq) {
+	const bySeq = new Map(events.map((event) => [event.seq, event]))
+	return {
+		id: 'test-session',
+		seq: events[events.length - 1].seq,
+		surface: { nodes: events.filter((event) => event.seq > surfaceFromSeq).map((event) => event.seq) },
+		eventAt: (seq) => bySeq.get(seq),
+		snapshotEvents: () => events,
+		requestHeader: () => undefined
+	}
+}
+
+/** 造事件流：任务起点 + 若干后续请求 + 一次换窗 + 一条动作。 */
+function buildSession() {
+	const events = []
+	let seq = 1
+	const push = (type, data) => { const event = { type, seq: seq++, data, time: 1000 + seq }; events.push(event); return event }
+	push('system/message', { content: [{ type: 'text', text: 'sys' }] })
+	const ask = (text) => push('user/message', { source: { kind: 'user', rpcId: 'r' }, content: [{ type: 'text', text }] })
+	ask('把 fetch 层改成指数退避重试：最多 5 次、基数 200ms、带抖动，并补上单元测试。不要改动调用方签名。')
+	ask('顺便把日志级别改成 debug')
+	ask('再补一条集成测试')
+	ask('继续')
+	const compactionSeq = seq - 1
+	push('compaction/end', {})
+	ask('接着做')
+	push('assistant/message', { message: { content: [{ type: 'text', text: '测试通过，还剩抖动参数要确认。' }, { type: 'tool-call', id: 'c1', name: 'bash', arguments: '{"command":"node --test"}' }] } })
+	push('tool/result', { message: { toolCallId: 'c1', content: [{ type: 'text', text: '12 tests passed' }], isError: false } })
+	return { events, session: sessionOf(events, compactionSeq) }
+}
+
+const options = { maxTokens: 15000, actions: 12, requests: 3, files: 12, ledger: '' }
+
+test('换窗后任务起点仍在交接信息里', () => {
+	const { session } = buildSession()
+	const handoff = __test.assembleHandoff(session, options)
+	assert.match(handoff, /## 任务起点/)
+	assert.ok(handoff.includes('指数退避重试'), '首个请求的原文必须出现')
+	assert.ok(handoff.includes('不要改动调用方签名'), '验收要求必须出现')
+})
+
+test('请求轨迹列出全部请求，而不是最近三条', () => {
+	const { session } = buildSession()
+	const handoff = __test.assembleHandoff(session, options)
+	for (const text of ['日志级别改成 debug', '再补一条集成测试', '继续', '接着做']) {
+		assert.ok(handoff.includes(text), '缺少请求：' + text)
+	}
+})
+
+test('预算紧张时先砍动作，任务起点不丢', () => {
+	const { session } = buildSession()
+	const handoff = __test.assembleHandoff(session, { ...options, maxTokens: 120, requests: 3 })
+	assert.ok(handoff.includes('指数退避重试'), '任务起点是保底段，不能被砍')
+	assert.ok(!handoff.includes('12 tests passed'), '动作段应最先被砍掉')
+})
+
+test('PTC 里的 tools.ledger_append 不算工作动作', () => {
+	assert.ok(__test.isSelfReferentialCall('const r = await tools.ledger_append({ task_id: "t" })'))
+	assert.ok(__test.isSelfReferentialCall('tools.new_context({})'))
+	assert.ok(!__test.isSelfReferentialCall('const r = await tools.bash({ command: "ls" })'))
+})
+
+test('PTC 写路径能进文件工作集，读路径不进去', () => {
+	assert.deepEqual(__test.filePathsOf('{"file_path":"src/a.js","content":"x"}'), ['src/a.js'])
+	assert.deepEqual(__test.filePathsOf('{"file_path":"src/a.js"}'), [], '纯读不应计入工作集')
+	assert.deepEqual(__test.filePathsOf('await tools.write({ file_path: "src/b.js", content: "y" })'), ['src/b.js'])
+})
+
+test('done_when 的校验、落盘、继承与渲染', () => {
+	const context = { entries: [], eventAt: () => ({ type: 'tool/result', data: { message: { isError: false } } }), isUserMessage: () => true, maxTextChars: 1500, checkAnchor: () => 'ok' }
+	assert.ok(validateAppend({ task_id: 't1', title: 'T', status: 'in_progress', text: 'x', next_step: 'y', done_when: 1 }, context).some((p) => p.includes('done_when')))
+	assert.ok(validateAppend({ task_id: 't1', title: 'T', status: 'in_progress', text: 'x', next_step: 'y', done_when: 'z'.repeat(401) }, context).some((p) => p.includes('done_when')))
+	const entry = stampEntry({ task_id: 't1', title: 'T', status: 'in_progress', text: 'x', next_step: 'y', done_when: '所有测试绿且抖动参数已定' }, { seq: 1, ts: 100, window: 2, through: 50 })
+	assert.equal(tasksOf([entry])[0].doneWhen.value, '所有测试绿且抖动参数已定')
+	const home = renderHome({ window: 2, entries: [entry], requests: [] }, { maxTokens: 8000, estimateTokens: __test.estimateTokens })
+	assert.ok(home.includes('完成判据：所有测试绿且抖动参数已定'))
+	assert.ok(!home.includes('最近的用户请求'), '没有请求时不渲染空段')
+})
+
+test('账本记录渲染回应请求编号', () => {
+	const entry = stampEntry({ task_id: 't1', title: 'T', status: 'in_progress', text: 'x', next_step: 'y' }, { seq: 1, ts: 100, window: 2, through: 50, defaultRequestSeq: 42 })
+	const home = renderHome({ window: 2, entries: [entry], requests: [] }, { maxTokens: 8000, estimateTokens: __test.estimateTokens })
+	assert.ok(home.includes('#42'), '应显示这条记录回应的请求编号')
+})
+test('换窗前的自动快照写的是结果首行，不是固定文案', () => {
+	const { session } = buildSession()
+	const { briefs } = __test.unloggedStepsOf(session, [])
+	assert.equal(briefs[0].brief, '12 tests passed')
+})
+
+test('done_when 省略时沿用上一条并标记为继承', () => {
+	const first = stampEntry({ task_id: 't1', title: 'T', status: 'in_progress', text: 'a', next_step: 'n1', done_when: '判据A' }, { seq: 1, ts: 100, window: 1 })
+	const second = stampEntry({ task_id: 't1', title: 'T', status: 'in_progress', text: 'b', next_step: 'n2' }, { seq: 2, ts: 200, window: 2 })
+	const task = tasksOf([first, second])[0]
+	assert.equal(task.doneWhen.value, '判据A')
+	assert.equal(task.doneWhen.isInherited, true)
+})

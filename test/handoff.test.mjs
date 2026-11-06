@@ -8,7 +8,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { __test } from '../lib/index.js'
-import { renderHome, stampEntry, tasksOf, validateAppend } from '../lib/ledger.js'
+import { appendAutoSnapshot, renderHome, stampEntry, tasksOf, validateAppend } from '../lib/ledger.js'
 
 /** 造一个最小会话：surface 只含当前窗口的节点，日志保留全部事件。 */
 function sessionOf(events, surfaceFromSeq) {
@@ -40,6 +40,24 @@ function buildSession() {
 	push('assistant/message', { message: { content: [{ type: 'text', text: '测试通过，还剩抖动参数要确认。' }, { type: 'tool-call', id: 'c1', name: 'bash', arguments: '{"command":"node --test"}' }] } })
 	push('tool/result', { message: { toolCallId: 'c1', content: [{ type: 'text', text: '12 tests passed' }], isError: false } })
 	return { events, session: sessionOf(events, compactionSeq) }
+}
+
+/** 造一个只含三条动作的会话：一条真动作、一条记账、一次换窗。 */
+function snapshotSession() {
+	const events = []
+	let seq = 1
+	const push = (type, data) => { const event = { type, seq: seq++, data, time: 1000 + seq }; events.push(event); return event }
+	push('system/message', { content: [{ type: 'text', text: 'sys' }] })
+	push('user/message', { source: { kind: 'user', rpcId: 'r' }, content: [{ type: 'text', text: '把这些步骤做完' }] })
+	const act = (id, name, args, result) => {
+		push('assistant/message', { message: { content: [{ type: 'tool-call', id, name, arguments: args }] } })
+		push('tool/result', { message: { toolCallId: id, content: [{ type: 'text', text: result }], isError: false } })
+	}
+	act('c1', 'bash', '{"command":"node --test"}', '12 tests passed')
+	act('c2', 'run_code', 'const r = await tools.ledger_append({ task_id: "t1" })', '已记录 #L1')
+	act('c3', 'run_code', 'await tools.new_context({})', 'A new context window will start without summarizing conversation history.')
+	// eventAt 是构造时的快照，必须等事件全部入列后再建会话。
+	return { events, session: sessionOf(events, 0) }
 }
 
 const options = { maxTokens: 15000, actions: 12, requests: 3, files: 12, ledger: '' }
@@ -95,10 +113,24 @@ test('账本记录渲染回应请求编号', () => {
 	const home = renderHome({ window: 2, entries: [entry], requests: [] }, { maxTokens: 8000, estimateTokens: __test.estimateTokens })
 	assert.ok(home.includes('#42'), '应显示这条记录回应的请求编号')
 })
-test('换窗前的自动快照写的是结果首行，不是固定文案', () => {
-	const { session } = buildSession()
+test('换窗前的自动快照记的是工具名与参数，不是结果首行', () => {
+	const { session } = snapshotSession()
 	const { briefs } = __test.unloggedStepsOf(session, [])
-	assert.equal(briefs[0].brief, '12 tests passed')
+	assert.equal(briefs[0].brief, 'bash：node --test')
+})
+
+test('自指动作与换窗不进自动快照', () => {
+	const { session } = snapshotSession()
+	const { steps, briefs } = __test.unloggedStepsOf(session, [])
+	assert.equal(steps, 3, '三条工具结果都算未记账：门槛按结果数算，不按摘要数')
+	assert.deepEqual(briefs.map((item) => item.brief), ['bash：node --test'], '只有真正的动作进摘要')
+})
+
+test('没有可归档的动作时快照只写数量，不留空表头', () => {
+	const meta = { seq: 1, ts: 100, window: 2, through: 90, requestRef: 5 }
+	const { appended } = appendAutoSnapshot([], [], meta, 2)
+	assert.ok(appended.text.includes('最近 2 个工具结果未记账'))
+	assert.ok(!appended.text.includes('已由系统归档'), '空列表不该留一个空表头')
 })
 
 test('done_when 省略时沿用上一条并标记为继承', () => {
@@ -107,4 +139,25 @@ test('done_when 省略时沿用上一条并标记为继承', () => {
 	const task = tasksOf([first, second])[0]
 	assert.equal(task.doneWhen.value, '判据A')
 	assert.equal(task.doneWhen.isInherited, true)
+})
+
+test('账本多行记录渲染时续行缩进，不顶平任务层级', () => {
+	const entry = stampEntry(
+		{ task_id: 't1', title: 'T', status: 'in_progress', text: '首行要点\n已由系统归档：\n- 动作一', next_step: '接着做' },
+		{ seq: 1, ts: 100, window: 2 }
+	)
+	const home = renderHome({ window: 2, entries: [entry], requests: [] }, { maxTokens: 8000, estimateTokens: __test.estimateTokens })
+	const lines = home.split('\n')
+	const at = lines.findIndex((line) => line.includes('首行要点'))
+	assert.ok(at >= 0, '最新记录必须出现')
+	assert.ok(lines[at].startsWith('  - 最新'), '首行跟着字段前缀走')
+	for (const line of lines.slice(at + 1, at + 3)) {
+		assert.ok(line.startsWith('    '), '续行必须缩进，否则读起来像另一条任务：' + JSON.stringify(line))
+	}
+})
+
+test('脚本里的 stdout.write 与夹具路径不算写文件', () => {
+	assert.deepEqual(__test.filePathsOf('process.stdout.write(x)\nconst fixture = {"file_path":"src/fetch.js"}'), [])
+	assert.deepEqual(__test.filePathsOf('await tools.write({ file_path: "src/b.js", content: "y" })'), ['src/b.js'])
+	assert.deepEqual(__test.filePathsOf('*** Update File: lib/a.js'), ['lib/a.js'], 'apply_patch 的路径写在补丁正文里')
 })

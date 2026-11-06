@@ -1,6 +1,6 @@
 {
   "name": "dsh-compact-codex",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Codex 风格压缩后端：以可拆卸插件形式替换 dsh 的 ctx.compaction 服务，全局覆盖全部 agent preset。",
   "private": true,
   "type": "module",
@@ -24,7 +24,8 @@
     }
   },
   "scripts": {
-    "sync": "node ./sync-presets.mjs"
+    "sync": "node ./sync-presets.mjs",
+    "test": "node --test test/handoff.test.mjs"
   },
   "license": "MIT"
 }

@@ -8,7 +8,7 @@ Codex 风格的压缩后端。以可拆卸插件形式接管 dsh 的 `ctx.compac
 
 ## 特性
 
-- **零摘要换窗**：完全不调模型，检查点是代码拼出的交接信息，含最近的用户请求原话、上一次助手回复、文件工作集与最近动作。换窗与账本读写这类自指动作不进动作段——新窗口会把「上一步刚换过窗」读成待办，接着再换一次。
+- **零摘要换窗**：完全不调模型，检查点是代码拼出的交接信息，含任务起点（首个请求原话）、用户请求轨迹（每条请求一个编号加一句话，正文按编号回查）、账本主页、上一次助手回复、文件工作集与最近动作。换窗与账本读写这类自指动作不进动作段——新窗口会把「上一步刚换过窗」读成待办，接着再换一次。
 - **编号可回查**：交接信息里的 `#编号` 是会话事件的 `seq`，用 `history` 工具按编号读原文，包括被压缩遮蔽的部分——不需要另存历史副本。
 - **任务账本**：跨窗口保留意图与下一步。标 `done` 必须给出真实成功的工具结果编号，锚点必须能在文件里唯一定位，两条规则由代码把关。一个任务的记录按字数预算从新往旧取，不按条数砍——最旧的那条常常最关键（数据源定稿、硬约束、踩过的坑），而前一次换窗已经把正文遮掉了，丢了就再也找不回来。
 - **换窗前自动快照**：压力换窗与冷缓存换窗发生时模型往往来不及记账，插件会先由代码把未记账的工具结果归档成一条快照（`through` 盖到当前历史编号），账本时间线由此与交接信息对齐——新窗口不会拿过时的「进行中」记录重推已完成的步骤。
@@ -123,7 +123,7 @@ Do not end the turn first: an idle window at the compaction point has no step le
 | 工具 | 说明 |
 | --- | --- |
 | `new_context` | 模型主动请求换窗。调用只登记请求，在下一个步边界消费并执行换窗；环境状态不受影响。窗口刚重置过、还空着时直接拒绝并说明，避免补做上一个窗口没做完的动作 |
-| `ledger_append` | 向任务账本追加一条记录。这是模型自己的义务、不是等提醒——完成一个阶段就记一条。`task_id` 标识任务，`status` 取 `in_progress` / `done` / `superseded` / `blocked`，未完成时写 `next_step` 与 `anchors` |
+| `ledger_append` | 向任务账本追加一条记录。这是模型自己的义务、不是等提醒——完成一个阶段就记一条。`task_id` 标识任务，`status` 取 `in_progress` / `done` / `superseded` / `blocked`，未完成时写 `next_step`（接着做什么）、`done_when`（做到哪算完）与 `anchors` |
 | `ledger_read` | 读任务账本。`view` 取 `home`（概览）/ `current`（当前窗口）/ `search`（按词搜索） |
 | `history` | 检索或读取历史。`action` 为 `search`（按词、角色、工具名、路径、窗口过滤）或 `read`（按编号读原文，`field: "input"` 读那次调用的完整参数） |
 
@@ -150,7 +150,7 @@ Do not end the turn first: an idle window at the compaction point has no step le
 | --- | --- | --- |
 | `style` | `"reset"` | 只接受 `"reset"`（换窗、不调模型）。配其他值会在载入期报错，提示卸载本插件 |
 | `handoffTokens` | `15000` | `reset` 模式交接信息的规模上限（估算 token） |
-| `budgetContext` | `false` | 是否注入带具体用量的诊断读数。默认关闭；压缩点提示不受这个开关影响 |
+| `budgetContext` | `false` | 是否注入带具体用量的诊断读数（含缓存冷热与 provider 实报／本地估算的偏差比）。默认关闭；压缩点提示不受这个开关影响 |
 | `budgetRefreshMs` | `600000` | 诊断读数之间的最小间隔（仅 `budgetContext` 打开时生效）；`0` 为每步都注入 |
 | `keepalive` | `true` | 是否在空闲时保活缓存。**会发真实请求消耗额度**，不需要时关掉 |
 | `cacheTtlMs` | `3600000` | 缓存 TTL 的假设值。provider 侧的真实值不下发，所以可配 |
@@ -199,6 +199,8 @@ node ./sync-presets.mjs
 │  ├─ ledger.js             任务账本的校验与渲染
 │  ├─ cache.js              缓存冷热判定与保活决策
 │  └─ preset.js             preset 入口
+├─ test/
+│  └─ handoff.test.mjs      离线断言：交接信息结构、账本字段、PTC 路径解析
 ├─ docs/
 │  ├─ how-it-works.md       换窗机制、交接信息、预算读数、账本、历史、缓存
 │  └─ internals.md          preset 覆盖语义、依赖解析、实现对齐与已知边界
@@ -211,6 +213,16 @@ node ./sync-presets.mjs
 ├─ LICENSE                  MIT
 └─ package.json
 ```
+
+## 测试
+
+离线断言，不启动 dsh、不调模型：
+
+```powershell
+node --test test/handoff.test.mjs
+```
+
+需要仓库 `node_modules` 里的运行时包（`install.ps1` 建的目录联接），否则 `lib/index.js` 的 import 解析不到。
 
 ## 文档
 

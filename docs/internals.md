@@ -15,7 +15,11 @@ loader 的 patch 语义是按 id 寻址、整体替换目标行的 `config`，�
 
 ## 依赖解析
 
-插件 import 的是 dsh 运行时提供的包（`@deepseek-ai/dsh-compaction-basic`、`dsh-llm` 等），它们不在插件目录的解析路径上。本包用**目录联接**把需要的包接到 `node_modules/@deepseek-ai/`：
+插件 import 的是 dsh 运行时提供的包（`@deepseek-ai/dsh-compaction-basic`、`dsh-llm` 等），它们不在插件目录的解析路径上。两种安装形态各有解法：
+
+**发布形态（tgz / git / npm）。** `package.json` 的 `peerDependencies` 声明了这些包，pnpm 把它们装进 profile 时为插件建立解析路径，插件目录里不需要副本。
+
+**link 形态（开发态）。** `link:` 指向仓库本体，模块解析走仓库自己的 `node_modules`，而 pnpm 不为链接包补 peer 依赖。所以还要把运行时提供的包**联接**过来：
 
 ```powershell
 $d   = "<repo>\node_modules\@deepseek-ai"
@@ -28,6 +32,8 @@ foreach ($p in @("schemastery", "cordis", "dsh-compaction", "dsh-compaction-basi
 ```
 
 dsh 装到别的路径时，改 `$src` 即可。`node_modules/` 已在 `.gitignore` 中。
+
+`peerDependencies` 里 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*` 的版本范围按 **dsh 版本**写（这里统一是 `>=0.2.2-rc.1`），不是按包自身版本：dsh 的 `unmetRequirements` 校验的是「运行时版本是否落在这个范围里」。写错会让插件被判不兼容并禁用，日志是 `Plugin <name>@<version> is incompatible with dsh <ver>: requirements {...}`。`@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery` 不参与这条校验（只查 `@deepseek-ai/dsh` 与 `dsh-*` 前缀），但声明它们能帮 pnpm 摆对布局。
 
 ## dsh 升级后
 

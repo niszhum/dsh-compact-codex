@@ -1,16 +1,25 @@
 {
   "name": "dsh-compact-codex",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "description": "Codex 风格压缩后端：以可拆卸插件形式替换 dsh 的 ctx.compaction 服务，全局覆盖全部 agent preset。",
-  "private": true,
   "type": "module",
+  "private": true,
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./preset": "./lib/preset.js",
     "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "docs",
+    "sync-presets.mjs",
+    "LICENSE"
+  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -21,11 +30,30 @@
       "inject": [
         "@deepseek-ai/dsh-client-ui-conversation"
       ]
+    },
+    "compatibility": {
+      "dsh": ">=0.2.2-rc.1",
+      "dshReleases": {
+        "0.2.2-rc.1": "compatible"
+      }
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh": ">=0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.2.2-rc.1",
+    "@deepseek-ai/dsh-compaction-basic": ">=0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.1",
+    "@deepseek-ai/dsh-util-values": ">=0.2.2-rc.1",
+    "@deepseek-ai/schemastery": "^3.19.0"
   },
   "scripts": {
     "sync": "node ./sync-presets.mjs",
     "test": "node --test test/handoff.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niszhum/dsh-compact-codex.git"
   },
   "license": "MIT"
 }

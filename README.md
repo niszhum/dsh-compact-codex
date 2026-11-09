@@ -26,75 +26,44 @@ Codex 风格的压缩后端。以可拆卸插件形式接管 dsh 的 `ctx.compac
 
 ## 环境要求
 
+- dsh ≥ 0.2.2-rc.1（`dsh.compatibility` 与 `peerDependencies` 都按这个下限声明，低于它会被 dsh 判为不兼容并禁用）
 - Node.js ≥ 22.5.0（随 dsh 的要求）
-- 一份已安装并可运行的 dsh
-- pnpm（用于 profile 依赖安装）
-- git（安装脚本自动获取仓库时用；仓库已在本地则不必）
+- pnpm（`dsh plugin` 安装依赖时用，桌面版自带）
+- git（从 git 地址安装时用；仓库已在本地则不必）
 
 ## 安装
 
-一条命令，在 PowerShell 里跑：
+本包是标准 dsh 插件：`package.json` 的 `dsh.bundle.patch` 让 dsh 认出它是 Bundle 层，`peerDependencies` 声明由 dsh 运行时提供的包，`files` 白名单决定分发的文件。安装走 dsh 自己的插件命令，不需要手改 profile。
 
 ```powershell
-iwr https://raw.githubusercontent.com/niszhum/dsh-compact-codex/main/install.ps1 -UseBasicParsing -OutFile "$env:TEMP\install-compact-codex.ps1"; & "$env:TEMP\install-compact-codex.ps1"
+dsh plugin --profile desktop add git+https://github.com/niszhum/dsh-compact-codex.git
 ```
 
-它按顺序做五件事：把仓库克隆到 `$DshHome\plugins\dsh-compact-codex`、把插件 import 的运行时包联接进该仓库的 `node_modules\@deepseek-ai\`、从官方 preset 生成 `cordis.patch.yml`、把本包写进 profile 的 `dependencies` 与 `dsh.profile.bundles`、最后 `pnpm install`。动过的文件先备份成 `*.bak-compact-codex-<时间戳>`，重复执行是幂等的。
+需要本机有 `git` 并在 PATH 里。离线环境可以先 `npm pack`，再把产出的 `.tgz` 路径交给 `add`。
 
-装完重启 dsh。
+`dsh plugin --profile <name> add` 做四件事：取包、按 `peerDependencies` 装好宿主提供的包、把包写进 profile 的 `dependencies`、把 `dsh-compact-codex` 追加进 `dsh.profile.bundles`（追加到末尾，天然排在官方 bundle 之后）。装完重启 dsh。
 
-本地已经克隆过仓库时，直接在仓库根目录跑 `.\install.ps1`，跳过克隆那一步。
+### 开发态：link 安装
 
-`irm … | iex` 走不通：`iex` 只把内容当命令表达式解析，脚本里的 `param` 块会被判成语法错误。所以先把脚本落盘、再执行落盘的那一份。
-
-### 参数
-
-| 参数 | 默认 | 用途 |
-| --- | --- | --- |
-| `-Profile` | `desktop` | 挂到哪个 profile |
-| `-DshHome` | `$env:USERPROFILE\.dsh` | dsh 的 home 目录 |
-| `-InstallDir` | `$DshHome\plugins\dsh-compact-codex` | 自动获取时仓库落在哪 |
-| `-Repo` | 脚本所在目录 | 本地已有仓库时直接指定 |
-| `-DshApp` | 自动探测 | dsh 的 `resources\app\dsh` 目录 |
-| `-SkipPnpm` | 关 | 跳过 `pnpm install` |
-| `-DryRun` | 关 | 只打印将要执行的动作，不落盘 |
-
-要传参数（试运行、换 profile）时，加在第二步后面：
+改完代码就想立刻生效、不重新打包时用 link：
 
 ```powershell
-& "$env:TEMP\install-compact-codex.ps1" -DryRun
+dsh plugin --profile desktop add dsh-compact-codex@link:<repo>
 ```
+
+link 指向仓库本体，模块解析走仓库自己的 `node_modules`；pnpm 不会为链接包补 peer 依赖，所以还要把 dsh 运行时提供的 `@deepseek-ai/*` 联接进仓库，命令见 [实现说明](docs/internals.md#依赖解析)。打包与 git 安装不需要这一步：`peerDependencies` 已声明这些包，pnpm 安装时会解析。
 
 ### 手动安装
 
-不想跑脚本时，三步，每一步都可逆。
+`dsh plugin add` 已经代劳，要手写就两步。
 
-**其一，把包链入 profile。** 在 `$DSH_HOME/profiles/<name>/package.json` 的 `dependencies` 加入（示例里的 `desktop` 是默认 profile 名）：
+**其一，写进 profile。** `$DSH_HOME/profiles/<name>/package.json` 的 `dependencies` 加来源（tgz 用 `file:`，仓库用 `link:`），并在 `dsh.profile.bundles` 末尾追加 `"dsh-compact-codex"`。它必须排在 `@deepseek-ai/dsh-web-app` **之后**，否则自带的 patch 会被官方 preset 声明覆盖回去——追加到末尾即可。
 
-```json
-"dsh-compact-codex": "link:<repo>"
-```
+**其二，`pnpm install` 后重启 dsh。**
 
-**其二，加入 bundle 链。** 同一文件的 `dsh.profile.bundles` 末尾追加：
+`cordis.patch.yml` 是从官方 preset 生成的，已随包提供；dsh 升级后要重跑 `node ./sync-presets.mjs` 再重启——新版本可能改 preset 声明，patch 要跟着重生成。
 
-```json
-"dsh-compact-codex"
-```
-
-必须排在 `@deepseek-ai/dsh-web-app` **之后**，否则它自带的 patch 会被官方 preset 声明覆盖回去。
-
-**其三，同步依赖并安装。**
-
-```powershell
-cd <repo>
-node ./sync-presets.mjs          # 生成 cordis.patch.yml
-cd "$env:USERPROFILE\.dsh\profiles\desktop"
-pnpm install
-```
-
-最后重启 dsh。
-
-插件 import 的是 dsh 运行时提供的包，它们不在插件目录的解析路径上；本包用目录联接把它们接进 `node_modules/@deepseek-ai/`，具体命令见 [实现说明](docs/internals.md#依赖解析)。
+`link:` 方式额外需要把 dsh 运行时的包联接进仓库（见上一节）；`file:` 与 git 方式由 `peerDependencies` 解析，不需要。
 
 ## 快速开始
 
@@ -178,7 +147,6 @@ Do not end the turn first: an idle window at the compaction point has no step le
 
 | 脚本 | 用途 |
 | --- | --- |
-| `install.ps1` | 一条命令安装：获取仓库、联接运行时依赖、生成 `cordis.patch.yml`、挂进 profile、`pnpm install`。`-DryRun` 只看不改 |
 | `sync-presets.mjs` | 从官方 bundle 的 preset 生成 `cordis.patch.yml`，只替换压缩后端的模块名 |
 
 dsh 升级后重跑一次即可重新对齐：
@@ -206,7 +174,6 @@ node ./sync-presets.mjs
 │  └─ internals.md          preset 覆盖语义、依赖解析、实现对齐与已知边界
 ├─ cordis.patch.yml         生成物，由 sync-presets.mjs 覆盖
 ├─ preset-config.json       配置覆盖
-├─ install.ps1              一条命令安装
 ├─ sync-presets.mjs         生成 cordis.patch.yml
 ├─ preview-handoff.html     交接卡片的预览页（上图即由它截出，非运行期产物）
 ├─ preview-handoff.png
@@ -231,9 +198,13 @@ node --test test/handoff.test.mjs
 
 ## 卸载
 
-从 profile 的 `dsh.profile.bundles` 移除 `"dsh-compact-codex"`，`pnpm install`，重启。官方 `compaction-basic` 完整恢复，无需改动任何官方文件。
+```powershell
+dsh plugin --profile desktop remove dsh-compact-codex
+```
 
-安装时的备份在同目录：`package.json.bak-compact-codex-<时间戳>`、`pnpm-lock.yaml.bak-compact-codex-<时间戳>`。
+`dsh plugin remove` 把它从 profile 的 `dependencies` 与 `dsh.profile.bundles` 里一起摘掉；`pnpm install` 后重启，官方 `compaction-basic` 完整恢复，无需改动任何官方文件。
+
+手写安装的那份要自己摘：从 `dsh.profile.bundles` 与 `dependencies` 里删掉对应两项再 `pnpm install`。安装脚本动过的文件留了备份：`package.json.bak-compact-codex-<时间戳>`、`pnpm-lock.yaml.bak-compact-codex-<时间戳>`。
 
 ## 许可证
 

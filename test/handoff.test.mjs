@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { __test } from '../lib/index.js'
 import { appendAutoSnapshot, renderHome, stampEntry, tasksOf, validateAppend } from '../lib/ledger.js'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -165,6 +165,59 @@ test('账本落盘是原子替换：不留临时文件，第二次写入整本�
 		else process.env.DSH_HOME = previous
 		rmSync(home, { recursive: true, force: true })
 	}
+})
+
+test('账本写盘失败时抛错，不谎报成功', () => {
+	const blocker = join(tmpdir(), 'dsh-ledger-blocker-' + process.pid + '.txt')
+	writeFileSync(blocker, 'x')
+	const previous = process.env.DSH_HOME
+	process.env.DSH_HOME = blocker
+	try {
+		const entries = [{ task_id: 't', title: 'T', status: 'in_progress', text: 'x', seq: 1, ts: 1, window: 1, request_ref: 0 }]
+		assert.throws(() => __test.writeLedger({ id: 'session-blocked' }, entries), /账本写入失败/)
+	} finally {
+		if (previous === undefined) delete process.env.DSH_HOME
+		else process.env.DSH_HOME = previous
+		rmSync(blocker, { force: true })
+	}
+})
+
+/** 最小 ctx：只提供 on / inject，够 registerNewContextTool 用。 */
+function fakeCtx() {
+	const handlers = new Map()
+	const registered = []
+	return {
+		on(event, handler) {
+			handlers.set(event, [...(handlers.get(event) ?? []), handler])
+		},
+		inject(_services, callback) {
+			callback({ tools: { register: (tool) => registered.push(tool) } })
+		},
+		handlers,
+		registered
+	}
+}
+
+test('下游已经压过窗时，new_context 不再压第二次', async () => {
+	const { events, session } = snapshotSession()
+	const ctx = fakeCtx()
+	let calls = 0
+	__test.registerNewContextTool(ctx, { compactRegion: async () => { calls += 1 } })
+	const tool = ctx.registered.find((item) => item.name === 'new_context')
+	const preStep = ctx.handlers.get('agent/pre-step')[0]
+
+	await tool.execute({}, { agent: { session } })
+	await preStep({ agent: { session } }, async () => ({ kind: 'continue' }))
+	assert.equal(calls, 1, '下游没压过时正常消费一次')
+
+	await tool.execute({}, { agent: { session } })
+	await preStep({ agent: { session } }, async () => {
+		const seq = session.seq + 1
+		events.push({ type: 'compaction/end', seq, data: {}, time: 9999 })
+		session.seq = seq
+		return { kind: 'continue' }
+	})
+	assert.equal(calls, 1, '下游刚压过，就不能再压一遍')
 })
 
 test('账本多行记录渲染时续行缩进，不顶平任务层级', () => {

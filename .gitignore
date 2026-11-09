@@ -10,3 +10,6 @@ _*
 .DS_Store
 .vscode/
 .idea/
+
+# Playwright MCP 的页面快照与控制台日志（调试产物）
+.playwright-mcp/

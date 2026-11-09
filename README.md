@@ -127,7 +127,7 @@ Do not end the turn first: an idle window at the compaction point has no step le
 | `ledger_read` | 读任务账本。`view` 取 `home`（概览）/ `current`（当前窗口）/ `search`（按词搜索） |
 | `history` | 检索或读取历史。`action` 为 `search`（按词、角色、工具名、路径、窗口过滤）或 `read`（按编号读原文，`field: "input"` 读那次调用的完整参数） |
 
-`new_context` 有两道账本门槛，任一不成立就拒绝换窗并说明原因：本窗口在最新用户请求之后记过账，且最近一次记账之后未记账的工具结果不超过 25 个。账本还空着时不拦。
+`new_context` 有两道账本门槛：本窗口在最新用户请求之后记过账，且最近一次记账之后未记账的工具结果不超过 25 个。两道只在「本窗口有新的真人请求」时检查，其余情况由换窗前的自动快照兜底——那种窗口里的工作都源自更早的请求，逼模型记账只能复述上一窗口的事。账本还空着时不拦。
 
 ## 配置
 

@@ -18,12 +18,13 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          suffix: ""
-          prefix: ""
+          prefix: You are a coding agent powered by the {{model}} model.
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
         config:
           maxBytes: 65536
+      - id: time-context
+        name: '@deepseek-ai/dsh-time-context'
       - id: tool-bash
         name: '@deepseek-ai/dsh-tool-bash'
         disabled: !!js process.platform === 'win32'
@@ -32,12 +33,17 @@
         disabled: !!js process.platform !== 'win32'
       - id: tool-fs
         name: '@deepseek-ai/dsh-tool-fs'
+        config:
+          # Set false to drop the apply_patch tool beside edit.
+          applyPatch: false
       - id: tool-fs-search
         name: '@deepseek-ai/dsh-tool-fs-search'
         config:
           sampleOverCapGlobResults: false
       - id: tool-jobs
         name: '@deepseek-ai/dsh-tool-jobs'
+      - id: tool-schedule
+        name: '@deepseek-ai/dsh-tool-schedule'
       - id: skill-filesystem
         name: '@deepseek-ai/dsh-skill-filesystem'
       - id: tool-skill
@@ -56,9 +62,9 @@
             name: '@deepseek-ai/dsh-plan-mode'
             config:
               section: |
-                You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. When the operator explicitly asks you to implement now, treat that as authorization to execute; exit plan mode or proceed with mutation tools as the operator directs. # [dsh-purge] plan-mode soft block removed
+                You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
-                Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Explore first with reads and analysis; when the operator requires changes, use mutation tools to carry out the plan — do not refuse implementation because plan mode is active. # [dsh-purge] plan-mode soft block removed Prefer existing functions and patterns over new machinery.
+                Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
 
                 The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
 
@@ -66,7 +72,7 @@
 
                 Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
 
-                When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; proceed with implementation when the operator requires it. # [dsh-purge] plan-mode soft block removed
+                When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
       - id: compaction
         name: cordis:group
         group: true
@@ -94,49 +100,24 @@
         config:
           - id: tool-subagent-control
             name: '@deepseek-ai/dsh-tool-subagent-control'
-          - id: tool-subagent-list-agents
-            name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
           - id: tool-subagent
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: spawn
               toolName: subagent
-              modelSelectionSettings: true
-              backgroundMode: continuable
+              modelSelection: true
+              modelDiscovery: true
           - id: tool-subagent-fork
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: fork
               toolName: subagent_fork
-              backgroundMode: continuable
-          - id: tool-subagent-codex
-            name: '@deepseek-ai/dsh-tool-subagent'
-            disabled: true
-            config:
-              provider: codex
-              toolName: subagent_codex
-              backgroundMode: one-shot
-              maxDepth: provider-managed
-          - id: tool-subagent-claude-code
-            name: '@deepseek-ai/dsh-tool-subagent'
-            disabled: true
-            config:
-              provider: claude-code
-              toolName: subagent_claude_code
-              backgroundMode: one-shot
-              maxDepth: provider-managed
           - id: workflow-ptc
             name: '@deepseek-ai/dsh-workflow-ptc'
             config:
               provider: spawn
           - id: tool-workflow
             name: '@deepseek-ai/dsh-tool-workflow'
-          - id: tool-ralph
-            name: '@deepseek-ai/dsh-tool-ralph'
-            disabled: true
-            config:
-              subagentProvider: spawn
-              maxRounds: 64
       - id: tool-ask-user
         name: '@deepseek-ai/dsh-tool-ask-user'
       - id: tool-todo
@@ -152,6 +133,9 @@
         name: '@deepseek-ai/dsh-tool-present'
       - id: tool-plugin-manager
         name: '@deepseek-ai/dsh-plugin-manager/tools'
+        disabled: !!js "!ctx.get('profileContext')"
+      - id: tool-plugin-market
+        name: '@deepseek-ai/dsh-plugin-market/tools'
         disabled: true
 
 # --- ptc.patch.yml ---
@@ -165,12 +149,13 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          suffix: ""
-          prefix: ""
+          prefix: You are a coding agent powered by the {{model}} model.
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
         config:
           maxBytes: 65536
+      - id: time-context
+        name: '@deepseek-ai/dsh-time-context'
       - id: tool-bash
         name: '@deepseek-ai/dsh-tool-bash'
         disabled: !!js process.platform === 'win32'
@@ -179,12 +164,17 @@
         disabled: !!js process.platform !== 'win32'
       - id: tool-fs
         name: '@deepseek-ai/dsh-tool-fs'
+        config:
+          # Set true to add the apply_patch tool beside edit.
+          applyPatch: false
       - id: tool-fs-search
         name: '@deepseek-ai/dsh-tool-fs-search'
         config:
           sampleOverCapGlobResults: false
       - id: tool-jobs
         name: '@deepseek-ai/dsh-tool-jobs'
+      - id: tool-schedule
+        name: '@deepseek-ai/dsh-tool-schedule'
       - id: skill-filesystem
         name: '@deepseek-ai/dsh-skill-filesystem'
       - id: tool-skill
@@ -203,9 +193,9 @@
             name: '@deepseek-ai/dsh-plan-mode'
             config:
               section: |
-                You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. When the operator explicitly asks you to implement now, treat that as authorization to execute; exit plan mode or proceed with mutation tools as the operator directs. # [dsh-purge] plan-mode soft block removed
+                You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
-                Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Explore first with reads and analysis; when the operator requires changes, use mutation tools to carry out the plan — do not refuse implementation because plan mode is active. # [dsh-purge] plan-mode soft block removed Prefer existing functions and patterns over new machinery.
+                Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
 
                 The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
 
@@ -213,7 +203,7 @@
 
                 Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
 
-                When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; proceed with implementation when the operator requires it. # [dsh-purge] plan-mode soft block removed
+                When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
       - id: compaction
         name: cordis:group
         group: true
@@ -241,37 +231,18 @@
         config:
           - id: tool-subagent-control
             name: '@deepseek-ai/dsh-tool-subagent-control'
-          - id: tool-subagent-list-agents
-            name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
           - id: tool-subagent
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: spawn
               toolName: subagent
-              modelSelectionSettings: true
-              backgroundMode: continuable
+              modelSelection: true
+              modelDiscovery: true
           - id: tool-subagent-fork
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: fork
               toolName: subagent_fork
-              backgroundMode: continuable
-          - id: tool-subagent-codex
-            name: '@deepseek-ai/dsh-tool-subagent'
-            disabled: true
-            config:
-              provider: codex
-              toolName: subagent_codex
-              backgroundMode: one-shot
-              maxDepth: provider-managed
-          - id: tool-subagent-claude-code
-            name: '@deepseek-ai/dsh-tool-subagent'
-            disabled: true
-            config:
-              provider: claude-code
-              toolName: subagent_claude_code
-              backgroundMode: one-shot
-              maxDepth: provider-managed
           - id: workflow-ptc
             name: '@deepseek-ai/dsh-workflow-ptc'
             disabled: true
@@ -280,12 +251,6 @@
           - id: tool-workflow
             name: '@deepseek-ai/dsh-tool-workflow'
             disabled: true
-          - id: tool-ralph
-            name: '@deepseek-ai/dsh-tool-ralph'
-            disabled: true
-            config:
-              subagentProvider: spawn
-              maxRounds: 64
       - id: tool-ask-user
         name: '@deepseek-ai/dsh-tool-ask-user'
       - id: tool-todo
@@ -297,14 +262,15 @@
         config:
           fetch: true
           searchTimeoutMs: 60000
-      - id: tool-presentation
-        name: '@deepseek-ai/dsh-agent-tool-presentation'
-        config:
-          mode: ptc
+      - id: tool-executor-ptc
+        name: '@deepseek-ai/dsh-tool-executor-ptc'
       - id: present
         name: '@deepseek-ai/dsh-tool-present'
       - id: tool-plugin-manager
         name: '@deepseek-ai/dsh-plugin-manager/tools'
+        disabled: true
+      - id: tool-plugin-market
+        name: '@deepseek-ai/dsh-plugin-market/tools'
         disabled: true
 
 # --- minimal.patch.yml ---
@@ -318,13 +284,28 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          prefix: ""
-          complete: false # [dsh-purge] minimal keeps operator once
+          prefix: You are a helpful software engineer assistant.
+          complete: true
           includeRuntimeContext: false
-      - id: agent-instructions
-        name: '@deepseek-ai/dsh-agent-instructions'
+      - id: tool-fs
+        name: '@deepseek-ai/dsh-tool-fs'
         config:
-          maxBytes: 65536
+          read: false
+          readImage: true
+          write: false
+          edit: false
+      - id: compaction
+        name: cordis:group
+        group: true
+        isolate:
+          compaction: true
+        config:
+          - id: compaction-basic
+            name: 'dsh-compact-codex'
+            config:
+              handoffTokens: 20000
+          - id: command-compact
+            name: '@deepseek-ai/dsh-command-compact'
       - id: persistent-shell
         name: cordis:group
         group: true
@@ -357,7 +338,7 @@
             config:
               shellDialect: pwsh
               timeoutMs: 300000
-          - id: persistent-pwsh # [dsh-purge] preset shell network
+          - id: persistent-pwsh
             name: '@deepseek-ai/dsh-tool-pwsh-persistent'
             disabled: !!js process.platform !== 'win32'
             config:
@@ -365,6 +346,7 @@
               description: |-
                 Run commands in a PowerShell shell
                 * When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+                * You don't have access to the internet via this tool.
                 * State is persistent across command calls and discussions with the user.
                 * Use native Windows paths (C:\...) and $env:NAME variables; this is PowerShell, not bash.
                 * Please avoid commands that may produce a very large amount of output.
@@ -383,12 +365,14 @@
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
-          suffix: ""
-          prefix: ""
+          prefix: >-
+            You are a coding agent powered by the {{model}} model.
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
         config:
           maxBytes: 65536
+      - id: time-context
+        name: '@deepseek-ai/dsh-time-context'
       - id: tool-bash
         name: '@deepseek-ai/dsh-tool-bash'
         disabled: !!js process.platform === 'win32'
@@ -397,12 +381,17 @@
         disabled: !!js process.platform !== 'win32'
       - id: tool-fs
         name: '@deepseek-ai/dsh-tool-fs'
+        config:
+          # Set true to add the apply_patch tool beside edit.
+          applyPatch: false
       - id: tool-fs-search
         name: '@deepseek-ai/dsh-tool-fs-search'
         config:
           sampleOverCapGlobResults: false
       - id: tool-jobs
         name: '@deepseek-ai/dsh-tool-jobs'
+      - id: tool-schedule
+        name: '@deepseek-ai/dsh-tool-schedule'
       - id: command-goal
         name: '@deepseek-ai/dsh-command-goal'
       - id: tool-goal
@@ -417,9 +406,9 @@
             name: '@deepseek-ai/dsh-plan-mode'
             config:
               section: |
-                You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. When the operator explicitly asks you to implement now, treat that as authorization to execute; exit plan mode or proceed with mutation tools as the operator directs. # [dsh-purge] plan-mode soft block removed
+                You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
-                Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Explore first with reads and analysis; when the operator requires changes, use mutation tools to carry out the plan — do not refuse implementation because plan mode is active. # [dsh-purge] plan-mode soft block removed Prefer existing functions and patterns over new machinery.
+                Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
 
                 The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
 
@@ -427,7 +416,7 @@
 
                 Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
 
-                When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; proceed with implementation when the operator requires it. # [dsh-purge] plan-mode soft block removed
+                When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
       - id: compaction
         name: cordis:group
         group: true
@@ -455,49 +444,24 @@
         config:
           - id: tool-subagent-control
             name: '@deepseek-ai/dsh-tool-subagent-control'
-          - id: tool-subagent-list-agents
-            name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
           - id: tool-subagent
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: spawn
               toolName: subagent
-              modelSelectionSettings: true
-              backgroundMode: continuable
+              modelSelection: true
+              modelDiscovery: true
           - id: tool-subagent-fork
             name: '@deepseek-ai/dsh-tool-subagent'
             config:
               provider: fork
               toolName: subagent_fork
-              backgroundMode: continuable
-          - id: tool-subagent-codex
-            name: '@deepseek-ai/dsh-tool-subagent'
-            disabled: true
-            config:
-              provider: codex
-              toolName: subagent_codex
-              backgroundMode: one-shot
-              maxDepth: provider-managed
-          - id: tool-subagent-claude-code
-            name: '@deepseek-ai/dsh-tool-subagent'
-            disabled: true
-            config:
-              provider: claude-code
-              toolName: subagent_claude_code
-              backgroundMode: one-shot
-              maxDepth: provider-managed
           - id: workflow-ptc
             name: '@deepseek-ai/dsh-workflow-ptc'
             config:
               provider: spawn
           - id: tool-workflow
             name: '@deepseek-ai/dsh-tool-workflow'
-          - id: tool-ralph
-            name: '@deepseek-ai/dsh-tool-ralph'
-            disabled: true
-            config:
-              subagentProvider: spawn
-              maxRounds: 64
       - id: tool-ask-user
         name: '@deepseek-ai/dsh-tool-ask-user'
       - id: tool-todo
@@ -522,6 +486,9 @@
         name: '@deepseek-ai/dsh-tool-present'
       - id: tool-plugin-manager
         name: '@deepseek-ai/dsh-plugin-manager/tools'
+        disabled: !!js "!ctx.get('profileContext')"
+      - id: tool-plugin-market
+        name: '@deepseek-ai/dsh-plugin-market/tools'
         disabled: !!js "!ctx.get('profileContext')"
 
 # --- 宿主层：客户端载体行（本包的 dsh.client 声明靠这一行被扫到）---
